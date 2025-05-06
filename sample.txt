@@ -1,0 +1,352 @@
+
+SolarWinds.com Blog Contact Us
+PRODUCT
+PRICING
+LOG SOURCES
+RESOURCES
+LOG IN
+REQUEST DEMO
+FREE TRIAL
+Managing Linux Logs
+Ultimate Guide to Logging - Your open-source resource for understanding, analyzing, and troubleshooting system logs
+
+    .NET+−
+    Apache+−
+    Java+−
+    Linux−
+        Managing Linux Logs
+        Troubleshooting with Linux Logs
+        Analyzing Linux Logs
+        Linux Logging Basics
+    Node+−
+    PHP+−
+    Python+−
+    Systemd+−
+    Uncategorized+−
+    Windows+−
+
+Managing Linux Logs
+
+A key best practice for logging is to centralize or aggregate your logs in a single location, especially if you have multiple servers or architecture tiers. Modern applications often have several tiers of infrastructure that can include a mix of on-premises servers and cloud services. Trying to hunt down the correct file to troubleshoot an error can be incredibly difficult, and trying to correlate problems across systems is highly challenging. There's nothing more frustrating than finding out the information you wanted wasn't captured in a log file or the log file potentially holding the answer was lost after a server restart.
+
+This guide explains how to use centralization services to collect and centralize your Linux log files.
+Benefits of Centralizing Logs
+
+Centralizing logs can make searching through log data easier and quicker since all your logs are accessible in a single location. Instead of guessing which server has the correct file, you can simply access this repository of log data to search for relevant events. Centralization is a key part of large management solutions, as it can allow you to analyze, parse, and index logs before storing them in a single location, helping to simplify troubleshooting and solving production issues. Log centralization can also offer these benefits:
+
+    Logs are backed up in a separate location, protecting them against accidental or unintentional loss, which can keep them accessible in case your servers go down or become unresponsive.
+    You don't have to use SSH or inefficient grep commands, which can use valuable computing resources for complex searches.
+    You can reduce the amount of disk space used by log files.
+    Engineers can troubleshoot production issues without directly accessing systems.
+
+While centralized log management is generally the better option, there are still some risks, such as poor net connectivity leading to data loss or logs using a great deal of network bandwidth. We'll discuss how to address these issues intelligently below.
+Popular Tools for Centralizing Logs
+
+Most Linux systems already centralize logs using a syslog daemon. As we explained in the Linux Logging Basics section, syslog is a service for collecting log files from services and applications running on the host. It can write those logs to file or forward them to another server via the Syslog protocol. There are several syslog implementations you can use, including:
+
+    rsyslog: a lightweight daemon installed on most common Linux distributions.
+    syslog-ng: the second most popular syslog daemon for Linux.
+    logstash: a heavier-weight agent for more advanced processing and parsing. It can read syslog messages using the syslog input plugin and forward them to any number of output destinations.
+    fluentd: another agent with advanced processing capabilities. It also supports syslog input using the in_syslog plugin.
+
+Rsyslog is the most popular syslog implementation and comes installed by default in many distributions of Linux. If you need more advanced filtering or custom parsing capabilities, Logstash is the next most popular choice. Logstash is also tightly integrated with the Elastic Stack. For this guide, we'll focus on using rsyslog since it's so widely used.
+Configure rsyslog.conf
+
+The main rsyslog configuration file is located at /etc/rsyslog.conf. You can store additional configuration files in the /etc/rsyslog.d/ directory. For example, on Ubuntu, this directory contains /etc/rsyslog.d/50-default.conf, which instructs rsyslog to write the system logs to file. You can read more about the configuration files in the rsyslog documentation.
+
+Configuring rsyslog involves setting up input sources (where rsyslog receives logs), as well as destination rules for where and how logs are written. Rsyslog already provides defaults for receiving syslog events, so you usually only need to add your centralization server as an output. Rsyslog uses RainerScript for its configuration syntax. In this example, we're forwarding our logs to the server at central.example.com over TCP port 514.
+
+action(type="omfwd" protocol="tcp" target="central.example.com" port="514")
+
+Alternatively, we could send logs to a log management solution. Cloud-based log management solutions like SolarWinds® Loggly® can provide you with a hostname and port you can send your logs to simply by changing the target and port fields. Check with your provider's documentation when configuring rsyslog.
+Logging Files and Directories
+
+Rsyslog provides the imfile module, allowing it to monitor log files for new events. This lets you specify a file or directory as a log source. Rsyslog can monitor individual files as well as entire directories.
+
+For example, we want to monitor log files created by the Apache server. We can do so by creating a new file in /etc/rsyslog.d/ called apache.conf, loading the imfile module, and adding the Apache log files as inputs.
+
+# Apache access log:
+input(type="imfile" File="/var/log/apache2/access.log" Tag="apache-access" Severity="info")
+# Apache error file:
+input(type="imfile" File="/var/log/apache2/error.log" Tag="apache-error" Severity="warning")
+
+The File parameter supports wildcards for monitoring multiple files as well as directories.
+Which Protocol: UDP, TCP, or RELP?
+
+There are three main protocols you can choose from when transmitting log data: UDP, TCP, and RELP.
+
+UDP sends messages without guaranteeing delivery or an acknowledgment of receipt (ACK). It makes a single attempt to send a packet, and if the delivery fails, it doesn’t try again. It's often much faster and uses fewer resources than other protocols but should only be used on reliable networks such as localhost. UDP also doesn't support encrypting logs.
+
+TCP is the most commonly used protocol for streaming over the internet since it requires an ACK before sending the next packet. If the delivery fails, it will continue retrying until it successfully delivers the message. However, TCP requires a handshake and active connection between the sender and the receiver, which uses additional network resources.
+
+RELP is designed specifically for rsyslog and is arguably the most reliable of these three protocols. It acknowledges receipt of data in the application layer and will resend if there’s an error. Since it's less common, you’ll need to make sure your destination also supports this protocol.
+
+If rsyslog encounters a problem when storing logs, such as an unavailable network connection, it will queue the logs until the connection is restored. The queued logs are stored in memory by default. However, memory is limited, and if the problem persists, the logs can exceed memory capacity, leading to data loss. To prevent this, consider using disk queues.
+
+Warning: You can lose data if you store logs only in memory.
+Reliably Send with Disk-assisted Queues
+
+Rsyslog can queue your logs to disk when memory is full. Disk-assisted queues can make the transport of logs more reliable. Here’s an example of how to configure a log forwarding rule in rsyslog with a disk-assisted queue.
+
+action(type="omfwd"        # Use with the omfwd module
+     protocol="tcp"        # Use the TCP protocol
+     target="myserver"     # Target server address
+     port="6514"           # Target server port
+queue.filename="fwdRule1"  # Prefix for backup files created on disk
+queue.maxDiskSpace="1000000000"  # Reserve 1GB of disk space
+queue.saveOnShutdown="on"  # Save messages to disk on shutdown
+queue.type="LinkedList"          # Allocate memory dynamically
+action.resumeRetryCount="1" # Keep trying if the target server can't be contacted)
+Encrypt Logs Using Transport Layer Security (TLS)
+
+When data security and privacy are a concern, you should consider encrypting your logs. Sniffers and middlemen could read your log data if you transmit it over the internet in clear text. You should encrypt your logs if they contain private information, sensitive identification data, or government-regulated data. The rsyslog daemon can encrypt logs using the TLS protocol and keep your data safer.
+
+The process of enabling TLS encryption depends on your logging setup. Generally, it involves the following steps:
+
+    Create a Certificate Authority (CA). There are sample certificates in the rsyslog /contrib/gnutls directory, which are suitable only for testing—you need to create your own for production. If you're using a log management service, it will have one ready for you.
+    Generate a digital certificate for your server to enable TLS, or use one from your log management service provider.
+    Configure your rsyslog service to send TLS-encrypted data to your log management service.
+
+Here's an example rsyslog configuration with TLS encryption. Replace CERT and DOMAIN_NAME with your own server setting.
+
+$DefaultNetstreamDriverCAFile /etc/rsyslog.d/keys/ca.d/CERT.crt
+$ActionSendStreamDriver gtls
+$ActionSendStreamDriverMode 1
+$ActionSendStreamDriverAuthMode x509/name
+$ActionSendStreamDriverPermittedPeer *.DOMAIN_NAME.com
+
+Log management services such as SolarWinds Loggly often provide their own CAs and certificates, which you merely need to reference in your rsyslog configuration. For example, enabling TLS with Loggly only requires you to download the Loggly certificate to your /etc/rsyslog.d/ directory, update your configuration, and restart the rsyslog service.
+
+First, download the certificate
+
+$ mkdir -pv /etc/rsyslog.d/keys/ca.d
+$ cd /etc/rsyslog.d/keys/ca.d
+$ curl -O https://logdog.loggly.com/media/logs-01.loggly.com_sha12.crt
+
+Then, open the /etc/rsyslog.d/22-loggly.conf configuration file and add the following:
+
+$MaxMessageSize 64k
+$DefaultNetstreamDriverCAFile /etc/rsyslog.d/keys/ca.d/logs-01.loggly.com_sha12.crt
+# Send messages to Loggly over TCP using the template.
+action(type="omfwd" protocol="tcp" target="logs-01.loggly.com" port="6514" template="LogglyFormat" StreamDriver="gtls" StreamDriverMode="1" StreamDriverAuthMode="x509/name" StreamDriverPermittedPeers="*.loggly.com")
+
+Finally, restart rsyslog.
+
+$ sudo systemctl restart rsyslog
+Best Practices for Application Logging
+
+Aside from the logs that Linux creates by default, it can also be a good idea to centralize logs from important applications. Almost all Linux-based server applications write their status information in separate, dedicated log files. This includes database products like PostgreSQL or MySQL, web servers like Nginx or Apache, firewalls, print and file sharing services, directory and DNS servers, and so on.
+
+The first thing an administrator may do after installing an application is to configure it. Linux applications typically have a .conf file somewhere within the /etc directory. It can be somewhere else too, but /etc is the first place people look for configuration files. Depending on how complex or large the application is, the number of settable parameters can be a few or hundreds. Refer to the application's documentation to learn more, or use the locate command to try and find the file yourself.
+
+[root@localhost ~]# locate postgresql.conf
+/usr/pgsql-9.4/share/postgresql.conf.sample
+/var/lib/pgsql/9.4/data/postgresql.conf
+Set a Standard Location for Log Files
+
+Linux systems typically save their log files under the /var/log directory. This works fine, but check if the application saves under a specific directory under /var/log. If it does, great. If not, you may want to create a dedicated directory for the application under /var/log. Why? Because other applications save their log files under /var/log as well, and if your application saves more than one log file—perhaps once every day or after each service restart—it may be difficult to crawl through a large directory to find the file you want.
+
+If you have more than one instance of the application running in your network, this approach is also handy. Think about a situation where you may have a dozen web servers running. If your logs are stored on a central syslog server, how do you know which log file contains which server's logs? By logging each server in a separate directory, you know exactly where to look when troubleshooting any one server.
+Use a Static File name
+
+Many applications add dynamic data to their log file names, such as the current date or timestamp. This is useful for automatically splitting logs by date, but it makes it harder for services like rsyslog to find the latest file. However, a better approach may be to use a non-changing name for your log file, then use logrotate to apply a timestamp or number to older log files.
+Append and Rotate Log Files
+
+Applications should append to existing log files instead of overwriting them. This helps ensure all log lines are captured, and no data is lost, even if the application restarts. However, log files can grow extremely large over time. If you are trying to find the root cause of a problem, you may end up searching through tens of thousands of lines.
+
+We recommend appending your logs to a single file, but we also recommend configuring the application to rotate its log files every so often. Tools like logrotate can do this automatically by copying the current log file to a new location, giving it a unique name, then truncating the current log file. This can have several benefits, including:
+
+    Logs are split across files by date and time, making it easier to find logs for a specific date.
+    Each log file is much smaller, making them easier to search through and send over a network.
+    Backing up log files is much easier, and deleting or archiving older logs can be done much more quickly.
+
+How often you rotate log files depends on how many logs you generate. As a rule of thumb, start by rotating your logs once per day.
+Set Log File Retention Policies
+
+How long do you keep a log file? This definitely comes down to business requirements. You could be asked to keep one week's worth of logging information, or it may be a regulatory requirement to keep 10 years' worth of data. Whatever it is, logs need to go from the server at one time or another.
+
+In general, unless otherwise required, you should probably keep at least one month's worth of log files online, plus copy them to a secondary location (like a logging server). Anything older can be offloaded to a separate media. For example, if you are on AWS, your older logs can be copied to Glacier.
+Store Log Files on a Separate Drive
+
+Log files are written constantly, which can lead to high disk I/O on busy systems. As a best practice, you can mount /var/log on a separate storage device. This prevents log file writes from interfering with the performance of your applications (especially on disk-based storage) and log files from filling up the entire drive in case they become too large.
+Format Your Log Entries
+
+What information should you capture in each log entry?
+
+It depends on what you want to use the log for. Do you want to use it only for troubleshooting purposes or to capture everything occurring? Is it a legal requirement to capture what each user is running or viewing?
+
+If you’re using logs for troubleshooting purposes, you may need to save only errors, warnings, or fatal messages. There's often no reason to capture debug messages, for example. Sometimes the application may log debug messages by default, or another administrator may have turned this on for another troubleshooting exercise; however, you may need to turn this off because it can fill up the space quickly. At a minimum, capturing the date, time, client application name, source IP or client host name, action performed, and the message itself may be all that’s needed.
+
+For example, consider the default logging behavior of PostgreSQL. Logs are stored in /var/log/postgresql, and each file starts with postgresql- followed by the date. Files are rotated daily, and older files are appended with a number based on when they were rotated. Each log line can be prefixed with fields such as the current timestamp, current user, database name, session ID, and transaction ID. You can change these settings by editing the PostgreSQL configuration file (/etc/postgresql/11/main/postgresql.conf on Debian).
+
+By default, each log line shows the timestamp and PostgreSQL process ID followed by the log message.
+
+[root@Localhost ~]# cat /var/log/postgresql/postgresql-11-main.log
+
+2019-05-14 15:53:16.109 EDT [609] LOG:  received fast shutdown request
+
+2019-05-14 15:53:16.131 EDT [609] LOG:  aborting any active transactions
+
+2019-05-14 15:53:16.143 EDT [609] LOG:  background worker "logical replication launcher" (PID 754) exited with exit code 1
+
+2019-05-14 15:53:16.147 EDT [748] LOG:  shutting down
+
+2019-05-14 15:53:16.215 EDT [609] LOG:  database system is shut down
+Monitor Log Files With imfile
+
+Traditionally, the most common way for applications to log their data is with files. While files can be easy to search through on a single machine, they don't scale well with more servers. With rsyslog, you can monitor files for changes and import new events into syslog, where you can then forward the logs to a centralized server. This is done using the imfile module. To enable the module, create a new configuration file in /etc/rsyslog.d/, then add a file input like this:
+
+module(load="imfile" PollingInterval="10") # Polls log files for changes every 10 seconds
+
+# File 1
+input(type="imfile"
+      File="/path/to/file1" # The path to your log file
+      Tag="tag1"      # Optional tag to apply to logs from this file
+      Severity="error"          # The syslog severity of logs from this file
+      Facility="local7")   # The facility to assign these logs to
+
+Add your output streams after this configuration, and rsyslog will send logs from the specified file to the output destination.
+Log Directly to the Syslog Socket With imuxsock
+
+A socket is similar to a UNIX file handle, except it reads data into memory instead of writing it to disk. In the case of syslog, this lets you send logs directly to syslog without having to write it to a file first.
+
+This approach makes efficient use of system resources if your server is constrained by disk I/O or you have no need for local file logs. The disadvantage of this approach is the socket has a limited queue size. If your syslog daemon goes down or can't keep up, you could lose log data.
+
+To enable socket logging in rsyslog, add the following line to your rsyslog configuration (it's enabled by default):
+
+$ModLoad imuxsock
+
+This creates a socket at /dev/log socket by default, but you can change this by modifying the SysSock.Name parameter. You can also set options such as rate limiting and flow control. For more information, see the rsyslog imuxsock documentation.
+UDP Logs With imupd
+Some applications output log data in UDP format, which is the standard protocol when transferring log files over a network or your localhost. Your syslog daemon receives these logs and can process or transmit them in a different format. Alternatively, you can send the logs to another syslog server or a log management solution.
+
+Some applications output log data in UDP format, which is the standard protocol when transferring log files over a network or your local    host. Your syslog daemon receives these logs and can process or transmit them in a different format. Alternatively, you can send the log    s to another syslog server or a log management solution.
+
+
+
+
+
+Use the following command to configure rsyslog to accept syslog data over UDP on standard port 514:
+
+$ModLoad imudp
+$UDPServerRun 514
+Manage Configuration on Many Servers
+
+When you have only a few servers, you can manually configure logging on them. Once you have a few dozen or more servers, you can take advantage of tools to make this easier and more scalable. At a basic level, the goal of each tool is to help you enable syslog on each of your servers, apply a configuration, and ensure the changes take effect.
+Pssh
+
+Pssh (or parallel SSH) lets you run a SSH command on several servers in parallel. However, it is often a best practice to use a pssh deployment for only a small number of servers because if one of your servers fails, you may have to SSH into the failed server and do the deployment manually. If you have several failed servers, then the manual deployment on them can take a long time.
+Puppet/Chef
+
+Puppet and Chef are configuration management tools built to automatically configure all your servers and bring them to the same state while monitoring and keeping them synchronized. Puppet and Chef are powerful tools capable of installing software, creating files, restarting services, and more. If you aren't sure which is more suitable for your deployment configuration management, check out InfoWorld’s comparison of the two tools.
+
+Some vendors also offer modules or recipes for configuring syslog. For example, Loggly provides a Puppet module built to use rsyslog to forward logs automatically from your agents. Install the Loggly Puppet module on your Puppet master, then add the following configuration to your Puppet manifest:
+
+# Send syslog events to Loggly
+  class { 'loggly::rsyslog':
+    customer_token => 'YOUR_CUSTOMER_TOKEN',
+  }
+
+Once your agents refresh, they can begin logging to Loggly.
+Kubernetes
+
+Kubernetes is an orchestration tool built to help your manage containers on multiple nodes. Kubernetes can provide a complete logging architecture that automatically collects and writes container logs to a file on the host machine. You can view logs for a specific Pod by running the command kubectl logs <pod name>, which is useful for accessing application logs on a remote server.
+
+Many log management solutions provide agents that can be deployed over Kubernetes to collect both application and host logs. For example, Loggly provides a DaemonSet designed to deploy a logging Pod to each node in a cluster. The Pod collects logs from other Pods and from the host itself, and deploying it as a DaemonSet can help you ensure there’s always an instance running on each node. Logging a Kubernetes cluster with Loggly is built to be as easy as running the following commands:
+
+$ kubectl create secret generic logspout-config --from-literal=syslog-structured-data="$YOUR_LOGGLY_TOKEN@41058 tag=\"kubernetes\""
+$ kubectl apply -f https://gist.githubusercontent.com/gerred/3cac803b9f8f581b22f562b509d897cf/raw/41cdccdc9364c3e82f9f90d925cc9b67417bf762/logspout-ds.yaml
+Docker
+
+Docker uses containers to run applications independent of the underlying server. It’s often used as the container runtime for orchestrators like Kubernetes but can be used as a standalone platform. ZDNet has an in-depth article about using Docker in your data center.
+
+There are several ways to log from Docker containers, including:
+
+    Logging via the Docker Logging Driver to the host system (the recommended method).
+    Routing all container logs to a single dedicated logging container (this is how the logspout container works).
+    Logging to a sidecar logging container.
+    Adding a logging agent to the container.
+
+You can also use Docker containers to collect logs from the host. If your container has a running syslog service, you can either send logs from the host to the container via syslog or mount the host's log files within the container and use a file monitoring agent to read the files.
+Vendor Scripts or Agents
+
+Some log management solutions offer scripts or agents to make sending data from one or more servers relatively easy. Heavyweight agents can use up extra system resources. There are also vendors that can integrate with existing rsyslog daemons to forward logs without using significantly more resources. Loggly, for example, can provide a script to forward logs from rsyslog to the Loggly ingestion servers using the omfwd module.
+
+Last updated: 2022
+See it. Analyze it. Inspect it. Solve it
+
+See what matters.
+START FREE TRIAL
+
+    Home Managing Linux Logs 
+
+Company
+
+    About us
+    Customers
+    SolarWinds Subscription Center
+    GDPR resource center
+    Our partners
+    SolarWinds jobs
+    Contact us
+    COVID-19 Resource Center
+
+Product
+
+    Overview
+    Pricing
+    Proactive monitoring
+    Troubleshooting with logs
+    Data analysis and reporting
+    DevOps integrations
+    Security
+    Loggly for Enterprise Scale
+    Log analysis for AWS
+    Logs in customer support
+    Splunk alternative
+    Node.js Logging
+    Sumo Logic alternative
+    ELK Elastic Stack alternative
+    Monitor Your Azure Applications
+    SolarWinds DevOps Products
+    Solutions
+    Use Cases
+    Log Analyzer
+    Log Viewer
+    IIS Log Analyzer
+
+Log University
+
+    Log Management - Introduction
+    White papers & guides
+    Videos & webinars
+    Case studies
+    Ultimate Guide to Logging
+    Blog
+    PHP Log
+    Java Log
+    C# Logging framework
+    Logging in Python
+    Remote Logging
+    CloudWatch Logs
+    CloudTrail Logs
+    Linux commands cheat sheet PDF
+
+Docs
+
+    Product documentation
+    Sending your logs to Loggly
+    Support
+    System status
+
+Loggly
+
+    Legal Documents
+    Privacy policy
+    California Privacy Rights
+    Terms of use
+    Security
+    API license
+
+© 2025 SolarWinds Worldwide, LLC. All rights reserved.
+
